@@ -1,6 +1,6 @@
 /* Mission Now — offline cache.
    アプリを更新したら VERSION の数字を1つ上げる(古いキャッシュを捨てるため) */
-const VERSION = 'v5';
+const VERSION = 'v6';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

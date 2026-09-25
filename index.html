@@ -226,6 +226,10 @@ textarea{min-height:130px;font-family:var(--mono);font-size:12px;resize:vertical
 .tips p{margin:8px 0}
 .tips ol{margin:8px 0;padding-left:1.3em;display:flex;flex-direction:column;gap:4px}
 
+
+.diag{margin-top:8px;font-size:12px;color:var(--muted);font-family:var(--mono)}
+.diag.warn{font-family:var(--body);color:var(--ink);background:var(--warm-soft);padding:8px 10px;border-radius:8px;line-height:1.5}
+
 /* nav */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
 .tabs .in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
@@ -299,8 +303,9 @@ textarea{min-height:130px;font-family:var(--mono);font-size:12px;resize:vertical
               <li>ショートカットアプリ →「+」→「アクションを追加」</li>
               <li>「<b>URLの内容を取得</b>」を検索して追加。URL欄に下の<b>課題のURL</b>を貼る。</li>
               <li>そのアクションの「<b>&gt;</b>」を開き、方法を <b>GET</b> に。「ヘッダ」の＋を押して、キーに <b>Authorization</b>、値に <b>Bearer</b>␣<b>トークン</b>(Bearerの後ろは半角スペース1つ)。</li>
-              <li>「<b>クリップボードにコピー</b>」を追加。</li>
-              <li>「<b>Appを開く</b>」を追加し、Mission Now を選ぶ。(一覧に出ないときは「URLを開く」でこのアプリのURLでもOK)</li>
+              <li>「<b>テキストを結合</b>」(Combine Text)を追加し、区切りを「<b>改行</b>」(New Lines)にする。<span class="muted">これがないと1件しかコピーされません。</span></li>
+              <li>「<b>クリップボードにコピー</b>」(Copy to Clipboard)を追加。</li>
+              <li>(任意)「<b>Appを開く</b>」→ Mission Now。一覧に出ないときは、このアクションは付けずに、ショートカットの隣にアプリのアイコンを置いておく。</li>
               <li>名前を「課題を取り込む」にして保存。共有ボタンから<b>ホーム画面に追加</b>。</li>
             </ol>
             <p><b>毎回の使い方</b>: ホーム画面のショートカットを押す → アプリが開く → この画面の「クリップボードから取り込む」を押す。初回だけペーストの許可を聞かれるので「許可」。</p>
@@ -350,6 +355,7 @@ const W_LABEL={light:'軽',mid:'中',heavy:'重'};
 const H=3600e3, D=24*H;
 
 let S=load()||makeSample();
+let lastLen=0;
 let tab='now', timer=null, selCell=null, wipeArm=false, dayOffset=0, dayOffsetTouched=false, selId=null, stripScroll=null;
 
 function load(){try{const s=localStorage.getItem(KEY);if(s)return JSON.parse(s)}catch(e){}return null}
@@ -656,6 +662,7 @@ function doImport(){
 }
 function importText(raw,quiet){
   let t=String(raw||'').trim().replace(/^while\(1\);/,'').trim();
+  lastLen=t.length;
   if(!t){setStatus(false,'中身が空でした。');return false}
   if(/^BEGIN:VCALENDAR/i.test(t))return importICS(t);
   const data=parseLoose(t);
@@ -664,12 +671,12 @@ function importText(raw,quiet){
   }
   if(data===undefined){
     const s=t.search(/[\[{]/),cut=s>=0&&!/[\]}]\s*$/.test(t);
-    setStatus(false,cut?'データが途中で切れているようです。KLMSのページで <b>Ctrl+A</b> で全選択してからコピーし直してください。':`読み取れない形式でした。貼った文字の先頭は「<span class="mono">${esc(t.slice(0,40))}</span>」です。KLMSのアドレスを開いた画面の文字を、そのまま全部コピーして貼ってください。`);return false;
+    setStatus(false,cut?'データが途中で切れているようです。KLMSのページで <b>Ctrl+A</b> で全選択してからコピーし直してください。':`読み取れない形式でした。貼った文字の先頭は「<span class="mono">${esc(t.slice(0,40))}</span>」です。KLMSのアドレスを開いた画面の文字を、そのまま全部コピーして貼ってください。<div class="diag">受け取った文字数 ${lastLen.toLocaleString()}</div>`);return false;
   }
   if(data&&data.app==='mission-now'&&data.state){S=data.state;save();setStatus(true,'バックアップから復元しました。');render();return true}
   const arr=Array.isArray(data)?data:(data&&(data.plannable_type||(data.id&&data.name))?[data]:null);
   if(!arr){
-    setStatus(false,data&&data.errors?'KLMSから「ユーザ認証が必要です」と返ってきています。iPhoneではアクセストークンかショートカットを使ってください(下の「iPhoneで取り込む」)。':'想定と違う形式でした。課題かコース一覧のデータを貼ってください。');return false;
+    setStatus(false,(data&&data.errors?'KLMSから「ユーザ認証が必要です」と返ってきています。iPhoneではアクセストークンかショートカットを使ってください(下の「iPhoneで取り込む」)。':'想定と違う形式でした。課題かコース一覧のデータを貼ってください。')+`<div class="diag">受け取った文字数 ${lastLen.toLocaleString()}</div>`);return false;
   }
   if(S.sample){S.courses={};S.items={};S.sample=false}
   const start=new Date((S.semesterStart||'2000-01-01')+'T00:00:00');
@@ -692,7 +699,9 @@ function importText(raw,quiet){
   S.lastImport=new Date().toISOString();save();
   let msg=[];if(nNew||nUpd)msg.push(`課題・お知らせ: 新規 ${nNew}件、更新 ${nUpd}件`);if(nC)msg.push(`コース ${nC}件(時間割に反映しました)`);if(nSkip)msg.push(`学期開始日より前の ${nSkip}件はスキップ`);
   if(arr.length>=100)msg.push('<br>100件ちょうど届いたので、続きがあるかもしれません。学期開始日を少し先にずらして、もう一度取り込んでください。');
-  setStatus(true,msg.join('。')||'取り込める項目がありませんでした。');render();return true;
+  let diag=`<div class="diag">受け取った文字数 ${lastLen.toLocaleString()} / 読み取れたデータ ${arr.length}件</div>`;
+  if(arr.length<=2&&lastLen<3000)diag+=`<div class="diag warn">データが1〜2件しか届いていません。ショートカットの場合は、<b>Get Contents of URL</b> と <b>Copy to Clipboard</b> の間に <b>Combine Text</b>(区切り: New Lines)を挟むと全部入ります。</div>`;
+  setStatus(true,(msg.join('。')||'取り込める項目がありませんでした。')+diag);render();return true;
 }
 
 /* ---------- ICS(カレンダーフィード)の取り込み ---------- */
@@ -732,7 +741,7 @@ function importICS(text){
   });
   if(!nNew&&!nUpd&&!nSkip){setStatus(false,'カレンダーの中身が読み取れませんでした。');return false}
   S.lastImport=new Date().toISOString();save();render();
-  setStatus(true,`カレンダーから 新規 ${nNew}件、更新 ${nUpd}件${nSkip?`(古い ${nSkip}件はスキップ)`:''}。<br>カレンダー方式では提出済みかどうかが分からないので、完了は自分でチェックしてください。`);
+  setStatus(true,`カレンダーから 新規 ${nNew}件、更新 ${nUpd}件${nSkip?`(古い ${nSkip}件はスキップ)`:''}。<br>カレンダー方式では提出済みかどうかが分からないので、完了は自分でチェックしてください。<div class="diag">受け取った文字数 ${lastLen.toLocaleString()}</div>`);
   return true;
 }
 
