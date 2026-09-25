@@ -287,15 +287,25 @@ textarea{min-height:130px;font-family:var(--mono);font-size:12px;resize:vertical
           <button class="btn ghost" data-act="forget-token">トークンを消す</button>
         </div>
         <input type="file" id="file" accept=".json,.ics,.txt,text/plain,text/calendar,application/json" hidden>
-        <details><summary class="muted" style="cursor:pointer;font-size:13px">ショートカットで1タップにする(おすすめ)</summary>
+        <details open><summary class="muted" style="cursor:pointer;font-size:13px">ショートカットで1タップにする(おすすめ)</summary>
           <div class="tips" style="margin-top:8px">
-            <p>iPhoneの「ショートカット」アプリで、次の順に並べます。トークンの発行が必要です。</p>
+            <p><b>準備(最初の1回だけ)</b></p>
             <ol>
-              <li><b>URLの内容を取得</b>: <span class="mono" style="font-size:11px">https://lms.keio.jp/api/v1/planner/items?start_date=<span id="sc-date">2026-10-01</span>&amp;per_page=100</span><br>方法 GET、ヘッダに <b>Authorization</b> = <span class="mono" style="font-size:11px">Bearer あなたのトークン</span></li>
-              <li><b>クリップボードにコピー</b></li>
-              <li><b>Appを開く</b> → Mission Now</li>
+              <li>KLMSで <b>アカウント → 設定</b> を開き、下のほうの「+新しいアクセストークン」でトークンを発行してコピーする。画面を閉じると二度と表示されないので注意。</li>
+              <li>このアプリをホーム画面に追加しておく(共有ボタン →「ホーム画面に追加」)。</li>
             </ol>
-            <p>作ったショートカットはホーム画面に置けます。押すと取り込み用のデータがコピーされてアプリが開くので、「クリップボードから取り込む」を押すだけです。コース一覧用にもう1つ作ると、学期はじめの時間割もこれで入ります。</p>
+            <p><b>ショートカットを作る</b></p>
+            <ol>
+              <li>ショートカットアプリ →「+」→「アクションを追加」</li>
+              <li>「<b>URLの内容を取得</b>」を検索して追加。URL欄に下の<b>課題のURL</b>を貼る。</li>
+              <li>そのアクションの「<b>&gt;</b>」を開き、方法を <b>GET</b> に。「ヘッダ」の＋を押して、キーに <b>Authorization</b>、値に <b>Bearer</b>␣<b>トークン</b>(Bearerの後ろは半角スペース1つ)。</li>
+              <li>「<b>クリップボードにコピー</b>」を追加。</li>
+              <li>「<b>Appを開く</b>」を追加し、Mission Now を選ぶ。(一覧に出ないときは「URLを開く」でこのアプリのURLでもOK)</li>
+              <li>名前を「課題を取り込む」にして保存。共有ボタンから<b>ホーム画面に追加</b>。</li>
+            </ol>
+            <p><b>毎回の使い方</b>: ホーム画面のショートカットを押す → アプリが開く → この画面の「クリップボードから取り込む」を押す。初回だけペーストの許可を聞かれるので「許可」。</p>
+            <p><b>時間割用にもう1つ</b>: 同じ作り方で、URLだけ<b>コース一覧のURL</b>に変えたショートカットを作ります。使うのは学期のはじめの1回だけです。</p>
+            <p class="muted">トークンはパスワードと同じ鍵です。人に見せず、使わなくなったらKLMSの設定で削除してください。</p>
           </div>
         </details>
       </div>
@@ -605,17 +615,38 @@ function renderImport(){
 function fmtAgo(iso){const ms=Date.now()-new Date(iso);if(ms<H)return `${Math.max(1,Math.floor(ms/6e4))}分前`;if(ms<D)return `${Math.floor(ms/H)}時間前`;return `${Math.floor(ms/D)}日前`}
 
 /* ---------- import ---------- */
-/* ブラウザのJSONビューアの「整形表示」ラベルなど、前後の余計な文字や、2つ続けて貼ったJSONも読めるようにする */
+/* 貼り付けられた文字からJSONを拾う。
+   ブラウザの「整形表示」ラベルのような余計な文字、2つ続けて貼ったデータ、
+   ショートカットが1件ずつ改行で並べた形(配列のカッコなし)にも対応する。 */
+function jsonChunks(t){
+  const out=[];let i=0;
+  while(i<t.length){
+    const c=t[i];
+    if(c!=='{'&&c!=='['){i++;continue}
+    let d=0,q=false,esc=false,end=-1;
+    for(let j=i;j<t.length;j++){
+      const ch=t[j];
+      if(esc){esc=false;continue}
+      if(ch==='\\'){esc=true;continue}
+      if(q){if(ch==='"')q=false;continue}
+      if(ch==='"'){q=true;continue}
+      if(ch==='{'||ch==='[')d++;
+      else if(ch==='}'||ch===']'){d--;if(d===0){end=j;break}}
+    }
+    if(end<0)break;
+    try{out.push(JSON.parse(t.slice(i,end+1)))}catch(e){}
+    i=end+1;
+  }
+  return out;
+}
 function parseLoose(t){
-  const tryP=s=>{try{return JSON.parse(s)}catch(e){return undefined}};
-  let r=tryP(t);if(r!==undefined)return r;
-  const s=t.search(/[\[{]/),e=Math.max(t.lastIndexOf(']'),t.lastIndexOf('}'));
-  if(s<0||e<=s)return undefined;
-  const body=t.slice(s,e+1).replace(/while\(1\);/g,'');
-  r=tryP(body);if(r!==undefined)return r;
-  const parts=body.split(/\]\s*(?:while\(1\);)?\s*\[/);
-  if(parts.length>1){r=tryP('['+parts.map(p=>p.replace(/^\s*\[|\]\s*$/g,'')).filter(p=>p.trim()).join(',')+']');if(r!==undefined)return r}
-  return undefined;
+  try{return JSON.parse(t)}catch(e){}
+  const body=t.replace(/while\(1\);/g,'');
+  const chunks=jsonChunks(body);
+  if(!chunks.length)return undefined;
+  if(chunks.length===1)return chunks[0];
+  const flat=[];chunks.forEach(c=>Array.isArray(c)?flat.push(...c):flat.push(c));
+  return flat;
 }
 function setStatus(ok,msg){const el=document.getElementById('import-status');el.innerHTML=`<div class="status ${ok?'ok':'err'}">${msg}</div>`}
 function doImport(){
@@ -636,13 +667,14 @@ function importText(raw,quiet){
     setStatus(false,cut?'データが途中で切れているようです。KLMSのページで <b>Ctrl+A</b> で全選択してからコピーし直してください。':`読み取れない形式でした。貼った文字の先頭は「<span class="mono">${esc(t.slice(0,40))}</span>」です。KLMSのアドレスを開いた画面の文字を、そのまま全部コピーして貼ってください。`);return false;
   }
   if(data&&data.app==='mission-now'&&data.state){S=data.state;save();setStatus(true,'バックアップから復元しました。');render();return true}
-  if(!Array.isArray(data)){
+  const arr=Array.isArray(data)?data:(data&&(data.plannable_type||(data.id&&data.name))?[data]:null);
+  if(!arr){
     setStatus(false,data&&data.errors?'KLMSから「ユーザ認証が必要です」と返ってきています。iPhoneではアクセストークンかショートカットを使ってください(下の「iPhoneで取り込む」)。':'想定と違う形式でした。課題かコース一覧のデータを貼ってください。');return false;
   }
   if(S.sample){S.courses={};S.items={};S.sample=false}
   const start=new Date((S.semesterStart||'2000-01-01')+'T00:00:00');
   let nNew=0,nUpd=0,nSkip=0,nC=0;
-  data.forEach(x=>{
+  arr.forEach(x=>{
     if(x&&x.plannable_type){
       const p=x.plannable||{},date=p.due_at||p.todo_date||x.plannable_date;
       if(!date||new Date(date)<start){nSkip++;return}
@@ -659,7 +691,7 @@ function importText(raw,quiet){
   });
   S.lastImport=new Date().toISOString();save();
   let msg=[];if(nNew||nUpd)msg.push(`課題・お知らせ: 新規 ${nNew}件、更新 ${nUpd}件`);if(nC)msg.push(`コース ${nC}件(時間割に反映しました)`);if(nSkip)msg.push(`学期開始日より前の ${nSkip}件はスキップ`);
-  if(data.length>=100)msg.push('<br>100件ちょうど届いたので、続きがあるかもしれません。学期開始日を少し先にずらして、もう一度取り込んでください。');
+  if(arr.length>=100)msg.push('<br>100件ちょうど届いたので、続きがあるかもしれません。学期開始日を少し先にずらして、もう一度取り込んでください。');
   setStatus(true,msg.join('。')||'取り込める項目がありませんでした。');render();return true;
 }
 
